@@ -4,6 +4,8 @@ import random
 import time
 from src import evaluate as model
 
+search_deadline = None
+
 # -----------------------------
 # Zobrist Hash Setup
 # -----------------------------
@@ -175,6 +177,9 @@ def search(board, depth, alpha, beta, zobrist_hash):
     global nodes, pv_move
     nodes += 1
 
+    if search_deadline is not None and time.time() >= search_deadline:
+        return 0, None  # or some harmless value
+
     # TT lookup
     entry = TT.get(zobrist_hash)
     if entry and entry.depth >= depth:
@@ -268,6 +273,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
 #@chess_manager.entrypoint
 def find_move(board, max_depth):
     global pv_move
+    search_deadline = time.time() + 0.50
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
 
@@ -275,8 +281,13 @@ def find_move(board, max_depth):
 
     time_start=time.time()
     for depth in range(1, max_depth + 1):
+        if time.time() >= search_deadline:
+            break
         print(f"\n=== Starting depth {depth} ===")
-        best_eval, best_move = search(board, depth, float('-inf'), float('inf'), zob_hash)
+        val, move = search(board, depth, float('-inf'), float('inf'), zob_hash)
+        if move is not None:
+            print("CANCEL")
+            best_eval, best_move = val, move
         print(f"Depth {depth} finished. Best move found: {best_move}\n")
         pv_move = best_move  # save PV for next depth
     time_end=time.time()

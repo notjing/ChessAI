@@ -1,3 +1,4 @@
+# main.py
 from .utils import chess_manager, GameContext
 from chess import Move
 import random
@@ -40,6 +41,4 @@ def test_func(ctx: GameContext):
 
 @chess_manager.reset
 def reset_func(ctx: GameContext):
-    # This gets called when a new game begins
-    # Should do things like clear caches, reset model state, etc.
-    pass
+    search.TT.clear()

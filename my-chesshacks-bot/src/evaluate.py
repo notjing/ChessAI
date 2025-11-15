@@ -49,6 +49,24 @@ mod = tf.keras.models.load_model(model_path)
 y_mean = 51.231956481933594
 y_std = 383.2938537597656
 
+
+def square_control(board):
+    # Creates 2 8x8 matrices; one for our own control and one for opponent control
+    white_control = [[0 for _ in range(8)] for _ in range(8)]
+    black_control = [[0 for _ in range(8)] for _ in range(8)]
+
+    for square in chess.SQUARES:
+        # Who controls this square?
+
+        # Attacks from our side (white)
+        attackers_our = board.attackers(chess.WHITE, square)
+        white_control[chess.square_rank(square)][chess.square_file(square)] = len(attackers_our)
+
+        # Attacks from opponent (black)
+        attackers_opponent = board.attackers(chess.BLACK, square)
+        black_control[chess.square_rank(square)][chess.square_file(square)] = len(attackers_opponent)
+    return white_control, black_control
+
 def board_parameters(board):
 
     #turn.board() returns true if it's white's turn, else, black's turn
@@ -117,26 +135,41 @@ def board_parameters(board):
 # -------------------------------
 def evaluate_board(board):
     turn, castling_rights, material, setup = board_parameters(board)
+    white_control, black_control = square_control(board)
 
-    planes = makeboards(board)  # shape (12,8,8)
-    setup_plane = np.array(setup, dtype="float32")  # shape (8,8)
-    planes = np.concatenate([planes, setup_plane[None, ...]], axis=0)  # (13,8,8)
-    planes = np.transpose(planes, (1, 2, 0))  # (8,8,13)
-    planes = np.expand_dims(planes, 0)  # (1,8,8,13)
+    # Base 12 planes
+    planes = makeboards(board)  # (12, 8, 8)
 
-    # Extra features
-    vec = np.array([castling_rights + [turn] + material], dtype='float32')  # (1,7)
+    # Extra planes
+    setup_plane = np.array(setup, dtype="float32")              # (8,8)
+    white_control = np.array(white_control, dtype="float32")    # (8,8)
+    black_control = np.array(black_control, dtype="float32")    # (8,8)
 
-    # Prediction
-    print("planes.shape:", planes.shape)
-    print("vec.shape:", vec.shape)
+    # Step 1: Build (15,8,8)
+    planes = np.concatenate(
+        [
+            planes,
+            setup_plane[None, ...],
+            white_control[None, ...],
+            black_control[None, ...]
+        ],
+        axis=0
+    )
+
+    # Step 2: (8,8,15)
+    planes = np.transpose(planes, (1, 2, 0))
+
+    # Step 3: (1,8,8,15)
+    planes = np.expand_dims(planes, 0)
+
+    # Extra vector: (1,7)
+    vec = np.array([castling_rights + [turn] + material], dtype="float32")
 
     preds = predict_fn([planes, vec])
 
-    print('after')
     pred_norm = preds.numpy()[0][0]
-    pred = pred_norm * y_std + y_mean
-    return pred
+    return pred_norm * y_std + y_mean
+
 
 
 @tf.function
