@@ -7,12 +7,12 @@ import chess
 import pandas as pd
 from huggingface_hub import HfApi, Repository
 
-def parse(file):
-    chess_data = pd.read_csv('model/chess_evaluations/chessData.csv')
-
+def parse(file, nrows=None):
+    chess_data = pd.read_csv(file, nrows=nrows)
+    print("parsing")
     first_column = chess_data.iloc[:, 0].tolist()
     second_column = chess_data.iloc[:, 1].tolist()
-
+    print(f"parsed: {len(first_column)} rows")
     return first_column, second_column
 
 def convert_eval_to_numeric(eval_str):
@@ -38,7 +38,7 @@ def find_piece(board, piece_type, color):
     return coords
 
 #board is a pythn chess board object
-#make 12 8x8 arrays that are 1s and 0s for if the piece is there
+#make 12 8x8 arrays that are 1s and 0s for if the piece is theree
 def makeboards(board):
     """
     Converts a python-chess Board object into 12 8x8 lists of lists.
@@ -204,7 +204,14 @@ def main():
     # Folder for Hugging Face repo (let Repository clone it)
     hf_folder = "chessai_model_repo"
     if os.path.exists(hf_folder):
-        shutil.rmtree(hf_folder)
+        print(f"{hf_folder} already exists, using it.")
+    else:
+        # Only clone if it doesn't existeee
+        repo = Repository(
+            local_dir=hf_folder,
+            clone_from="your-username/chessai",
+            use_auth_token=True
+        )
 
     # Clone the repo into an empty folder
     repo = Repository(
