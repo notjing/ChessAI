@@ -203,11 +203,33 @@ def search(board, depth, alpha, beta, zobrist_hash):
     orig_alpha = alpha
     orig_beta = beta
 
-    for move in moves:
-        print(" " * depth, f"Exploring move: {move}, depth {depth}")
+    for move_index, move in enumerate(moves):
+        # print(" " * depth, f"Exploring move: {move}, depth {depth}")
+
         new_hash = compute_child_hash(board, move, zobrist_hash)
+
+        # ----- Late Move Reductions -----
+        reduction = 0
+        if (
+                depth >= 3
+                and move_index >= 3  # don't reduce the first few moves
+                and not board.is_capture(move)
+                and not board.gives_check(move)
+                and move.promotion is None
+                and not board.is_check()  # safe but optional
+        ):
+            reduction = 1
+
         board.push(move)
-        val, _ = search(board, depth - 1, alpha, beta, new_hash)
+        if reduction > 0:
+            # reduced-depth search
+            val, _ = search(board, depth - 1 - reduction, alpha, beta, new_hash)
+
+            # if reduced search still improves alpha, do a full-depth re-search
+            if maximizing and val > alpha or (not maximizing and val < beta):
+                val, _ = search(board, depth - 1, alpha, beta, new_hash)
+        else:
+            val, _ = search(board, depth - 1, alpha, beta, new_hash)
         board.pop()
 
         if maximizing:
