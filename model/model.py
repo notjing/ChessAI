@@ -83,7 +83,7 @@ def main():
     y_train = (y_train - y_mean) / y_std
     y_test = (y_test - y_mean) / y_std
 
-    # Transpose to (batch, height, width, channels)
+    # Transpose to (batch, height, width, channels)e
     x_train = np.transpose(x_train, (0, 2, 3, 1))
     x_test = np.transpose(x_test, (0, 2, 3, 1))
     print(f"Training shape: {x_train.shape}")
