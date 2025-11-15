@@ -1,5 +1,5 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 import chess
 import pandas as pd
 
@@ -10,6 +10,50 @@ def parse(file):
     second_column = chess_data.iloc[:, 1].tolist()
 
     return first_column, second_column
+
+
+def find_piece(board, piece_type, color):
+    """
+    Finds all squares with a given piece type and color.
+    Returns a list of (row, col) coordinates.
+    """
+    coords = []
+    
+    for square in board.pieces(piece_type, color):
+        row = 7 - (square // 8)  # Flip row so top of board is 0
+        col = square % 8
+        coords.append((row, col))
+    
+    return coords
+
+#board is a pythn chess board object
+#make 12 8x8 arrays that are 1s and 0s for if the piece is there
+def makeboards(board):
+    """
+    Converts a python-chess Board object into 12 8x8 lists of lists.
+    Order of layers:
+    White: pawn, knight, bishop, rook, queen, king
+    Black: pawn, knight, bishop, rook, queen, king
+    """
+    
+    #List of all chess pieces corresponding to python-chess
+    piece_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
+    #The 2 colours
+    colors = [chess.WHITE, chess.BLACK]
+    
+    #12 layers
+    layers = []
+
+    for color in (colors):
+        for piece in (piece_types):
+            setup = [[0 for _ in range(8)] for _ in range(8)]
+            coords = find_piece(board, piece, color)
+            for x in range (len(coords)):
+                setup[coords[x][0]][coords[x][1]] = 1
+            layers.append(setup)
+
+    return layers
+
 
 def reshape(data):
     red = data[:, 0:1024].reshape(-1, 32, 32)
