@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.keras import regularizers
 import numpy as np
 import chess
 import pandas as pd
@@ -26,14 +27,8 @@ def main():
     x_train = []
     y_train = []
 
-    for i in range(1, 6):
-        data = unpickle(f'cifar-10-batches-py/data_batch_{i}')
-        x_train.extend(data[b'data'])
-        y_train.extend(data[b'labels'])
-
-    test_data = unpickle('cifar-10-batches-py/test_batch')
-    x_test = np.array(test_data[b'data'])
-    y_test = np.array(test_data[b'labels'])
+    x_test = []
+    y_test = []
 
     x_train = np.array(x_train)
     x_test = np.array(x_test)
@@ -50,41 +45,33 @@ def main():
     x_test = reshape(x_test)
 
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(32, 32, 3), padding="same"),
+        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu', input_shape=(8, 8, 12), padding="same", kernel_regularizer=regularizers.l2(0.001)),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(32, 32, 3), padding="same"),
+        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
         tf.keras.layers.Dropout(0.2),
 
-        tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same"),
+        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
         tf.keras.layers.BatchNormalization(),
-
-        #tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same"),
-        #tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
-
+        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.3),
 
-        tf.keras.layers.Conv2D(128, kernel_size=(3, 3), activation='relu', padding="same"),
+        tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
         tf.keras.layers.BatchNormalization(),
-
-        #tf.keras.layers.Conv2D(128, kernel_size=(3, 3), activation='relu', padding="same"),
-        #tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
-
+        tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.4),
 
 
         tf.keras.layers.Flatten(),
-        #tf.keras.layers.Dense(512, activation='relu'),
         tf.keras.layers.Dense(128, activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Dropout(0.4),
-        tf.keras.layers.Dense(10, activation='softmax')
+        tf.keras.layers.Dense(1, activation='linear')
     ])
 
-    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+    loss_fn = tf.keras.losses.MeanSquaredError();
 
     initial_learning_rate = 0.001
 
