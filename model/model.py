@@ -1,139 +1,146 @@
+import os
+import shutil
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras import regularizers
 import chess
 import pandas as pd
+from huggingface_hub import HfApi, Repository
 
-def parse(file):
-    chess_data = pd.read_csv('model/chess_evaluations/chessData.csv')
+# Make sure you've logged in via CLI: huggingface-cli login
 
+# Create the repo if it doesn't exist
+api = HfApi()
+api.create_repo("chessai", exist_ok=True)
+
+def parse(file, nrows=None):
+    chess_data = pd.read_csv(file, nrows=nrows)
+    print("parsing")
     first_column = chess_data.iloc[:, 0].tolist()
     second_column = chess_data.iloc[:, 1].tolist()
-
+    print(f"parsed: {len(first_column)} rows")
     return first_column, second_column
 
+def convert_eval_to_numeric(eval_str):
+    try:
+        value = float(eval_str)
+        return np.clip(value, -1500, 1500)
+    except (ValueError, TypeError):
+        return 1500.0
 
 def find_piece(board, piece_type, color):
-    """
-    Finds all squares with a given piece type and color.
-    Returns a list of (row, col) coordinates.
-    """
     coords = []
-
     for square in board.pieces(piece_type, color):
-        row = 7 - (square // 8)  # Flip row so top of board is 0
+        row = 7 - (square // 8)
         col = square % 8
         coords.append((row, col))
-
     return coords
 
-#board is a pythn chess board object
-#make 12 8x8 arrays that are 1s and 0s for if the piece is there
 def makeboards(board):
-    """
-    Converts a python-chess Board object into 12 8x8 lists of lists.
-    Order of layers:
-    White: pawn, knight, bishop, rook, queen, king
-    Black: pawn, knight, bishop, rook, queen, king
-    """
-
-    #List of all chess pieces corresponding to python-chess
     piece_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
-    #The 2 colours
     colors = [chess.WHITE, chess.BLACK]
-
-    #12 layers
     layers = []
 
-    for color in (colors):
-        for piece in (piece_types):
+    for color in colors:
+        for piece in piece_types:
             setup = [[0 for _ in range(8)] for _ in range(8)]
             coords = find_piece(board, piece, color)
-            for x in range (len(coords)):
-                setup[coords[x][0]][coords[x][1]] = 1
+            for x, y in coords:
+                setup[x][y] = 1
             layers.append(setup)
-
     return layers
 
-
-def reshape(data):
-    red = data[:, 0:1024].reshape(-1, 32, 32)
-    green = data[:, 1024:2048].reshape(-1, 32, 32)
-    blue = data[:, 2048:3072].reshape(-1, 32, 32)
-
-    images = np.stack([red, green, blue], axis=-1)
-
-    return images
-
-
 def main():
+    # Load FENs and evaluations
+    fens, evals = parse('chess_evaluations/chessData.csv', nrows=10000)
+    evals = [convert_eval_to_numeric(e) for e in evals]
 
-    x_train = []
-    y_train = []
+    print(f"Processing {len(fens)} positions")
+    boards = []
+    for idx, fen in enumerate(fens):
+        board = chess.Board(fen)
+        boards.append(makeboards(board))
+        if idx % 10000 == 0:
+            print(f"Processed {idx}/{len(fens)}")
 
-    x_test = []
-    y_test = []
+    boards = np.array(boards, dtype='float32')
+    evals = np.array(evals, dtype='float32')
 
-    x_train = np.array(x_train)
-    x_test = np.array(x_test)
-    y_train = np.array(y_train)
-    y_test = np.array(y_test)
+    # Shuffle data
+    indices = np.arange(len(boards))
+    np.random.shuffle(indices)
+    boards = boards[indices]
+    evals = evals[indices]
 
-    x_train = x_train.astype('float32')
-    x_test = x_test.astype('float32')
+    # Train/test split
+    split_index = int(len(boards) * 0.8)
+    x_train, y_train = boards[:split_index], evals[:split_index]
+    x_test, y_test = boards[split_index:], evals[split_index:]
 
-    x_train /= 255.0
-    x_test /= 255.0
+    # Normalize evaluations
+    y_mean = np.mean(y_train)
+    y_std = np.std(y_train) + 1e-6
+    y_train = (y_train - y_mean) / y_std
+    y_test = (y_test - y_mean) / y_std
 
-    x_train = reshape(x_train)
-    x_test = reshape(x_test)
+    # Transpose to (batch, height, width, channels)
+    x_train = np.transpose(x_train, (0, 2, 3, 1))
+    x_test = np.transpose(x_test, (0, 2, 3, 1))
+    print(f"Training shape: {x_train.shape}")
 
+    # Define model
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu', input_shape=(8, 8, 12), padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.Conv2D(16, (3, 3), activation='relu', input_shape=(8, 8, 12), padding="same"),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.Conv2D(16, (3, 3), activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.2),
-
-        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.Conv2D(32, (3, 3), activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.Conv2D(32, (3, 3), activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.3),
-
-        tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001)),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.4),
-
-
+        tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same",
+                               kernel_regularizer=regularizers.l2(0.001)),
+        tf.keras.layers.GlobalAveragePooling2D(),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dropout(0.4),
         tf.keras.layers.Dense(1, activation='linear')
     ])
 
-    loss_fn = tf.keras.losses.MeanSquaredError();
+    model.compile(optimizer=tf.keras.optimizers.Adam(0.0001),
+                  loss=tf.keras.losses.MeanAbsoluteError(),
+                  metrics=['mae'])
 
-    initial_learning_rate = 0.001
+    # Train
+    print("Starting training...")
+    model.fit(x_train, y_train, epochs=1, validation_split=0.1, batch_size=128)
+    print("Evaluating...")
+    model.evaluate(x_test, y_test, verbose=2)
 
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate,
-        decay_steps=1000,
-        decay_rate=0.9,
-        staircase=True
+    # Save model as .keras file
+    model_file = "chessai_model.keras"
+    model.save(model_file)
+
+    # Folder for Hugging Face repo (let Repository clone it)
+    hf_folder = "chessai_model_repo"
+    if os.path.exists(hf_folder):
+        shutil.rmtree(hf_folder)
+
+    # Clone the repo into an empty folder
+    repo = Repository(
+        local_dir=hf_folder,
+        clone_from="notjing/chessai",  # <-- REPLACE with your HF username
+        use_auth_token=True
     )
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    # Copy the model file into the repo folder
+    shutil.copy(model_file, hf_folder)
 
-    early_stopping = tf.keras.callbacks.EarlyStopping(
-        monitor='val_accuracy', patience=10, restore_best_weights=True)
+    # Push to Hugging Face
+    repo.push_to_hub(commit_message="Upload trained chess AI model")
+    print("Model uploaded successfully!")
 
-    model.compile(optimizer=optimizer,
-                  loss=loss_fn,
-                  metrics=['accuracy'],
-                  )
-
-    model.fit(x_train, y_train, epochs=5, validation_split=0.1, callbacks=[early_stopping])
-
-    model.evaluate(x_test, y_test, verbose=2)
+if __name__ == "__main__":
+    main()
