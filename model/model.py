@@ -65,15 +65,6 @@ def makeboards(board):
 
     return layers
 
-def reshape(data):
-    red = data[:, 0:1024].reshape(-1, 32, 32)
-    green = data[:, 1024:2048].reshape(-1, 32, 32)
-    blue = data[:, 2048:3072].reshape(-1, 32, 32)
-
-    images = np.stack([red, green, blue], axis=-1)
-
-    return images
-
 def board_parameters(board):
 
     #turn.board() returns true if it's white's turn, else, black's turn
