@@ -77,7 +77,7 @@ def main():
     x_train, y_train = boards[:split_index], evals[:split_index]
     x_test, y_test = boards[split_index:], evals[split_index:]
 
-    # Normalize evaluations
+    # Normalize evaluationse
     y_mean = np.mean(y_train)
     y_std = np.std(y_train) + 1e-6
     y_train = (y_train - y_mean) / y_std
