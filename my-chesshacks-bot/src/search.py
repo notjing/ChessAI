@@ -2,6 +2,7 @@ import chess
 import chess.engine
 import random
 import time
+from src import evaluate as model
 
 # -----------------------------
 # Zobrist Hash Setup
@@ -82,12 +83,18 @@ real_eval=True
 def evaluate(board):
     global leaf_nodes
     leaf_nodes += 1
-    if(real_eval):
-        info = engine.analyse(board, chess.engine.Limit(time=STOCKFISH_TIME))
-        val = info["score"].white().score(mate_score=1000000)
+    engine_start = time.time()
+    if real_eval:
+
+        #info = engine.analyse(board, chess.engine.Limit(time=STOCKFISH_TIME))
+        val = model.evaluate_board(board)
+        #val = info["score"].white().score(mate_score=1000000)
+
         return val
     else:
         return 0
+    engine_end = time.time()
+    print(str(engine_end - engine_start))
 
     #time.sleep(0.001)  # 5 ms
     #return 0
@@ -197,7 +204,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
     orig_beta = beta
 
     for move in moves:
-        #print(" " * depth, f"Exploring move: {move}, depth {depth}")
+        print(" " * depth, f"Exploring move: {move}, depth {depth}")
         new_hash = compute_child_hash(board, move, zobrist_hash)
         board.push(move)
         val, _ = search(board, depth - 1, alpha, beta, new_hash)
@@ -205,13 +212,13 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
         if maximizing:
             if val > best_eval:
-                #print(" " *depth,f"New best move at depth {depth}: {move} (score {val})")
+                print(" " *depth,f"New best move at depth {depth}: {move} (score {val})")
                 best_eval = val
                 best_move = move
             alpha = max(alpha, val)
         else:
             if val < best_eval:
-                #print(" " * depth,f"New best move at depth {depth}: {move} (score {val})")
+                print(" " * depth,f"New best move at depth {depth}: {move} (score {val})")
                 best_eval = val
                 best_move = move
             beta = min(beta, val)
@@ -244,10 +251,26 @@ def find_move(board, max_depth):
 
     pv_move = None  # reset before iterative deepening
 
+    time_start=time.time()
     for depth in range(1, max_depth + 1):
-        #print(f"\n=== Starting depth {depth} ===")
+        print(f"\n=== Starting depth {depth} ===")
         best_eval, best_move = search(board, depth, float('-inf'), float('inf'), zob_hash)
-        #print(f"Depth {depth} finished. Best move found: {best_move}\n")
+        print(f"Depth {depth} finished. Best move found: {best_move}\n")
         pv_move = best_move  # save PV for next depth
+    time_end=time.time()
+    elapsed=time_end-time_start
+    nps=nodes/elapsed
+
+    print("===================================")
+    print(f"Depth: {depth}")
+    print(f"Best Move: {best_move}")
+    print(f"Eval: {best_eval}")
+    print(f"Nodes: {nodes:,}")
+    print(f"Leaf Nodes: {leaf_nodes:,}")
+    print(f"Time: {elapsed:.4f}s")
+    print(f"NPS: {nps:,.0f}")
+    print("===================================\n")
 
     return best_eval, best_move
+
+
