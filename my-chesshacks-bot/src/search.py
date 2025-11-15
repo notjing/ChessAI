@@ -108,6 +108,10 @@ def score_move(board, move, parent_hash=None):
     board.push(move)
     if board.is_check():
         score += 1000
+
+    #prioritize castling
+    if board.is_castling(move):
+        score+=500
     board.pop()
 
     # Captures (MVV-LVA)
@@ -115,11 +119,12 @@ def score_move(board, move, parent_hash=None):
         captured = board.piece_at(move.to_square)
         attacker_value = piece_value(board.piece_at(move.from_square))
         victim_value = piece_value(captured)
-        score += 1000 + victim_value - attacker_value
+        score += 1000 + min(0,victim_value - attacker_value)
 
     # Promotions
     if move.promotion:
         score += 900
+
 
     # ----- TT ordering -----
     if parent_hash is not None:
@@ -131,32 +136,20 @@ def score_move(board, move, parent_hash=None):
             if entry.flag == "EXACT":
                 score += 3000 + entry.eval
             elif entry.flag == "LOWERBOUND":  # likely good
-                score += 2000 + entry.eval
+                score += 2000
             elif entry.flag == "UPPERBOUND":  # weaker info
-                score += 1000 + entry.eval
+                score += 1000
 
     return score
 
 
 def compute_child_hash(board, move, parent_hash):
-    """Compute zobrist hash for child after making move, without touching board state."""
+    # simple, correct: push the move and recompute full zobrist from board
     board.push(move)
-
-    new_hash = parent_hash
-    moved_piece = board.piece_at(move.to_square)
-    idx = piece_index(moved_piece)
-
-    # Remove piece from origin
-    new_hash ^= ZOBRIST_PIECE[idx][move.from_square]
-
-    # Add piece on target
-    new_hash ^= ZOBRIST_PIECE[idx][move.to_square]
-
-    # Flip turn
-    new_hash ^= ZOBRIST_BLACK_TO_MOVE
-
+    new_hash = compute_zobrist(board)
     board.pop()
     return new_hash
+
 
 def piece_value(piece):
     if not piece:
@@ -200,18 +193,13 @@ def search(board, depth, alpha, beta, zobrist_hash):
     moves.sort(key=lambda m: score_move(board, m, zobrist_hash), reverse=True)
     #print(moves)
 
+    orig_alpha = alpha
+    orig_beta = beta
+
     for move in moves:
         #print(" " * depth, f"Exploring move: {move}, depth {depth}")
+        new_hash = compute_child_hash(board, move, zobrist_hash)
         board.push(move)
-
-        # Incremental Zobrist update
-        new_hash = zobrist_hash
-        piece = board.piece_at(move.to_square)
-        idx = piece_index(piece)
-        new_hash ^= ZOBRIST_PIECE[idx][move.from_square]
-        new_hash ^= ZOBRIST_PIECE[idx][move.to_square]
-        new_hash ^= ZOBRIST_BLACK_TO_MOVE  # flip side
-
         val, _ = search(board, depth - 1, alpha, beta, new_hash)
         board.pop()
 
@@ -236,9 +224,9 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
     # Store in TT
     flag = "EXACT"
-    if best_eval <= alpha:
+    if best_eval <= orig_alpha:
         flag = "UPPERBOUND"
-    elif best_eval >= beta:
+    elif best_eval >= orig_beta:
         flag = "LOWERBOUND"
     TT[zobrist_hash] = TTEntry(depth, best_eval, flag, best_move)
 
@@ -250,7 +238,6 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
 #@chess_manager.entrypoint
 def find_move(board, max_depth):
-
     global pv_move
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
@@ -258,9 +245,9 @@ def find_move(board, max_depth):
     pv_move = None  # reset before iterative deepening
 
     for depth in range(1, max_depth + 1):
-        print(f"\n=== Starting depth {depth} ===")
+        #print(f"\n=== Starting depth {depth} ===")
         best_eval, best_move = search(board, depth, float('-inf'), float('inf'), zob_hash)
-        print(f"Depth {depth} finished. Best move found: {best_move}\n")
+        #print(f"Depth {depth} finished. Best move found: {best_move}\n")
         pv_move = best_move  # save PV for next depth
 
     return best_eval, best_move
