@@ -177,10 +177,12 @@ def search(board, depth, alpha, beta, zobrist_hash):
     global nodes, pv_move
     nodes += 1
 
+    # Check for cancellation
     if search_deadline is not None and time.time() >= search_deadline:
-        return 0, None  # or some harmless value
+        print("TIME IS UP")
+        return None, None
 
-    # TT lookup
+    # Transposition table lookup
     entry = TT.get(zobrist_hash)
     if entry and entry.depth >= depth:
         if entry.flag == "EXACT":
@@ -200,61 +202,54 @@ def search(board, depth, alpha, beta, zobrist_hash):
     maximizing = board.turn
     best_eval = -1e9 if maximizing else 1e9
 
-    # --- Move Ordering ---
     moves = list(board.legal_moves)
     moves.sort(key=lambda m: score_move(board, m, zobrist_hash), reverse=True)
-    print(moves)
 
     orig_alpha = alpha
     orig_beta = beta
 
     for move_index, move in enumerate(moves):
-        print(" " * depth, f"Exploring move: {move}, depth {depth}")
-
         new_hash = compute_child_hash(board, move, zobrist_hash)
 
-        # ----- Late Move Reductions -----
+        # Late Move Reductions (optional)
         reduction = 0
         if (
-                depth >= 3
-                and move_index >= 3  # don't reduce the first few moves
-                and not board.is_capture(move)
-                and not board.gives_check(move)
-                and move.promotion is None
-                and not board.is_check()  # safe but optional
+            depth >= 3
+            and move_index >= 3
+            and not board.is_capture(move)
+            and not board.gives_check(move)
+            and move.promotion is None
+            and not board.is_check()
         ):
             reduction = 1
 
         board.push(move)
         if reduction > 0:
-            # reduced-depth search
-            val, _ = search(board, depth - 1 - reduction, alpha, beta, new_hash)
-
-            # if reduced search still improves alpha, do a full-depth re-search
-            if maximizing and val > alpha or (not maximizing and val < beta):
-                val, _ = search(board, depth - 1, alpha, beta, new_hash)
+            val, mov = search(board, depth - 1 - reduction, alpha, beta, new_hash)
+            # Full-depth re-search if needed
+            if val is not None and ((maximizing and val > alpha) or (not maximizing and val < beta)):
+                val, mov = search(board, depth - 1, alpha, beta, new_hash)
         else:
-            val, _ = search(board, depth - 1, alpha, beta, new_hash)
+            val, mov = search(board, depth - 1, alpha, beta, new_hash)
         board.pop()
+
+        # Propagate cancellation
+        if val is None:
+            return None, None
 
         if maximizing:
             if val > best_eval:
-                print(" " *depth,f"New best move at depth {depth}: {move} (score {val})")
                 best_eval = val
                 best_move = move
             alpha = max(alpha, val)
         else:
             if val < best_eval:
-                print(" " * depth,f"New best move at depth {depth}: {move} (score {val})")
                 best_eval = val
                 best_move = move
             beta = min(beta, val)
 
         if alpha >= beta:
-            print("PRUNE!")
             break
-    print("Done!")
-
 
     # Store in TT
     flag = "EXACT"
@@ -264,36 +259,39 @@ def search(board, depth, alpha, beta, zobrist_hash):
         flag = "LOWERBOUND"
     TT[zobrist_hash] = TTEntry(depth, best_eval, flag, best_move)
 
-    # Update PV move for next iterative deepening
-    if depth == 1:  # could also store PV from root
+    # Update PV
+    if depth == 1:
         pv_move = best_move
 
     return best_eval, best_move
 
-#@chess_manager.entrypoint
+
 def find_move(board, max_depth):
-    global pv_move
-    search_deadline = time.time()+5.0
+    global pv_move, search_deadline
+    search_deadline = time.time() + 3.0
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
 
-    pv_move = None  # reset before iterative deepening
+    pv_move = None
 
-    time_start=time.time()
+    time_start = time.time()
     for depth in range(1, max_depth + 1):
-        print(search_deadline-time.time())
-        if time.time() >= search_deadline:
-            print("CANCEL")
-            return pv_move,best_eval
-            break
+        print(search_deadline - time.time())
         print(f"\n=== Starting depth {depth} ===")
-        best_eval, best_move = search(board, depth, float('-inf'), float('inf'), zob_hash)
+        eval, move = search(board, depth, float('-inf'), float('inf'), zob_hash)
+
+        if eval is None:
+            print("Search cancelled due to timeout")
+            break
+
+        best_eval, best_move = eval, move
+        pv_move = best_move
 
         print(f"Depth {depth} finished. Best move found: {best_move}\n")
-        pv_move = best_move  # save PV for next depth
-    time_end=time.time()
-    elapsed=time_end-time_start
-    nps=nodes/elapsed
+
+    time_end = time.time()
+    elapsed = time_end - time_start
+    nps = nodes / elapsed
 
     print("===================================")
     print(f"Depth: {depth}")
@@ -306,5 +304,4 @@ def find_move(board, max_depth):
     print("===================================\n")
 
     return best_eval, best_move
-
 

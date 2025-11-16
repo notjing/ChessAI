@@ -67,6 +67,31 @@ def square_control(board):
         black_control[chess.square_rank(square)][chess.square_file(square)] = len(attackers_opponent)
     return white_control, black_control
 
+def hanging_grids(board):
+    white_grid = [[0 for _ in range(8)] for _ in range(8)]
+    black_grid = [[0 for _ in range(8)] for _ in range(8)]
+
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if not piece:
+            continue
+
+        row = 7 - (square // 8)
+        col = square % 8
+
+        attackers = board.attackers(not piece.color, square)
+        defenders = board.attackers(piece.color, square)
+
+        is_hanging = len(attackers) > 0 and len(defenders) == 0
+
+        if is_hanging:
+            if piece.color == chess.WHITE:
+                white_grid[row][col] = 1
+            else:
+                black_grid[row][col] = 1
+
+    return np.array([white_grid, black_grid], dtype="float32")
+
 def board_parameters(board):
 
     #turn.board() returns true if it's white's turn, else, black's turn
@@ -79,6 +104,8 @@ def board_parameters(board):
     #Kingside, queenside
     white_rights = [0,0]
     black_rights= [0,0]
+
+    checkmate = board.is_checkmate()
 
     white_ks = board.has_kingside_castling_rights(chess.WHITE)
     if white_ks:
@@ -135,16 +162,16 @@ def board_parameters(board):
         setup[coords[0]][coords[1]] = 1
         ep_rights = True
 
-    return turn, castling_rights, material, setup, material_count
+    return turn, castling_rights, material, setup, material_count, checkmate
 
 
 # -------------------------------
 # Evaluation function
 # -------------------------------
 def evaluate_board(board):
-    turn, castling_rights, material, setup, material_count = board_parameters(board)
+    turn, castling_rights, material, setup, material_count, checkmate = board_parameters(board)
     white_control, black_control = square_control(board)
-
+    hanging = hanging_grids(board)
     # Base 12 planes
     planes = makeboards(board)  # (12, 8, 8)
 
@@ -171,7 +198,7 @@ def evaluate_board(board):
     planes = np.expand_dims(planes, 0)
 
     # Extra vector: (1,7)
-    vec = np.array([castling_rights + [turn] + material + material_count], dtype="float32")
+    vec = np.array([castling_rights + [turn] + material + material_count + [checkmate]], dtype="float32")
 
     preds = predict_fn([planes, vec])
 
