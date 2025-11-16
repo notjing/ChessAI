@@ -35,7 +35,7 @@ def test_func(ctx: GameContext):
     ctx.logProbabilities(move_probs)
     '''
     move=0
-    eval,move=search.find_move(ctx.board,3)
+    eval,move=search.find_move(ctx, ctx.board,3)
     return move
 
 

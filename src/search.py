@@ -257,7 +257,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
     return best_eval, best_move
 
 
-def find_move(board, max_depth):
+def find_move(ctx, board, max_depth):
     global pv_move, search_deadline
     search_deadline = time.time() + 3.0
     zob_hash = compute_zobrist(board)
@@ -266,6 +266,11 @@ def find_move(board, max_depth):
     pv_move = None
 
     time_start = time.time()
+    if ctx.timeLeft<10000:
+        max_depth -=1
+    if ctx.timeLeft<3000:
+        max_depth -=1
+
     for depth in range(1, max_depth + 1):
         print(search_deadline - time.time())
         print(f"\n=== Starting depth {depth} ===")
