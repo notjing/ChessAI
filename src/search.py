@@ -259,7 +259,11 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
 def find_move(ctx, board, max_depth):
     global pv_move, search_deadline
-    search_deadline = time.time() + 3.0
+    search_deadline = time.time() + 2.0
+    if ctx.timeLeft<10000:
+        search_deadline = time.time() + 0.5
+    elif ctx.timeLeft<5000:
+        search_deadline = time.time() + 0.01
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
 
