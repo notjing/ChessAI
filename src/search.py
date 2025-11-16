@@ -68,15 +68,6 @@ class TTEntry:
         self.flag = flag  # "EXACT", "LOWERBOUND", "UPPERBOUND"
         self.move = move
 
-engine = chess.engine.SimpleEngine.popen_uci(
-    r"C:\Users\itish\Documents\ChessHacks\stockfish\stockfish-windows-x86-64-avx2.exe"
-)
-try:
-    engine.configure({"Threads": 1})
-except Exception(BaseException):
-    pass
-
-STOCKFISH_TIME = 0.001
 nodes = 0
 leaf_nodes = 0
 
