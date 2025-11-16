@@ -96,8 +96,16 @@ def board_parameters(board):
 
     castling_rights = white_rights + black_rights
 
+    piece_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
+    material_count = []
+
+    for color in [chess.WHITE, chess.BLACK]:
+        for piece_type in piece_types:
+            material_count.append(len(board.pieces(piece_type, color)))
+
+
     material = []
-    white_material, black_material = 0 , 0
+    white_material, black_material = 0, 0
 
     piece_values = {
         chess.PAWN: 1,
@@ -115,7 +123,7 @@ def board_parameters(board):
         else:
             black_material += value
 
-    material = [white_material, black_material]
+    material = [white_material/39.8 - black_material/39.8]
 
     ep_rights = board.ep_square
     setup = [[0 for _ in range(8)] for _ in range(8)]
@@ -127,14 +135,14 @@ def board_parameters(board):
         setup[coords[0]][coords[1]] = 1
         ep_rights = True
 
-    return turn, castling_rights, material, setup
+    return turn, castling_rights, material, setup, material_count
 
 
 # -------------------------------
 # Evaluation function
 # -------------------------------
 def evaluate_board(board):
-    turn, castling_rights, material, setup = board_parameters(board)
+    turn, castling_rights, material, setup, material_count = board_parameters(board)
     white_control, black_control = square_control(board)
 
     # Base 12 planes
@@ -163,7 +171,7 @@ def evaluate_board(board):
     planes = np.expand_dims(planes, 0)
 
     # Extra vector: (1,7)
-    vec = np.array([castling_rights + [turn] + material], dtype="float32")
+    vec = np.array([castling_rights + [turn] + material + material_count], dtype="float32")
 
     preds = predict_fn([planes, vec])
 

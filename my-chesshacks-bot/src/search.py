@@ -203,13 +203,13 @@ def search(board, depth, alpha, beta, zobrist_hash):
     # --- Move Ordering ---
     moves = list(board.legal_moves)
     moves.sort(key=lambda m: score_move(board, m, zobrist_hash), reverse=True)
-    #print(moves)
+    print(moves)
 
     orig_alpha = alpha
     orig_beta = beta
 
     for move_index, move in enumerate(moves):
-        # print(" " * depth, f"Exploring move: {move}, depth {depth}")
+        print(" " * depth, f"Exploring move: {move}, depth {depth}")
 
         new_hash = compute_child_hash(board, move, zobrist_hash)
 
@@ -251,9 +251,9 @@ def search(board, depth, alpha, beta, zobrist_hash):
             beta = min(beta, val)
 
         if alpha >= beta:
-            #print("PRUNE!")
+            print("PRUNE!")
             break
-    #print("Done!")
+    print("Done!")
 
 
     # Store in TT
@@ -273,7 +273,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
 #@chess_manager.entrypoint
 def find_move(board, max_depth):
     global pv_move
-    search_deadline = time.time() + 0.50
+    search_deadline = time.time()+5.0
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
 
@@ -281,13 +281,14 @@ def find_move(board, max_depth):
 
     time_start=time.time()
     for depth in range(1, max_depth + 1):
+        print(search_deadline-time.time())
         if time.time() >= search_deadline:
+            print("CANCEL")
+            return pv_move,best_eval
             break
         print(f"\n=== Starting depth {depth} ===")
-        val, move = search(board, depth, float('-inf'), float('inf'), zob_hash)
-        if move is not None:
-            print("CANCEL")
-            best_eval, best_move = val, move
+        best_eval, best_move = search(board, depth, float('-inf'), float('inf'), zob_hash)
+
         print(f"Depth {depth} finished. Best move found: {best_move}\n")
         pv_move = best_move  # save PV for next depth
     time_end=time.time()
