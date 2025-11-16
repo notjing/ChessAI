@@ -7,7 +7,6 @@ import chess
 import os
 
 from src.utils import chess_manager
-from src import main
 
 app = FastAPI()
 
