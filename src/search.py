@@ -266,9 +266,9 @@ def find_move(ctx, board, max_depth):
     pv_move = None
 
     time_start = time.time()
-    if ctx.timeLeft<10000:
+    if ctx.timeLeft<30000:
         max_depth -=1
-    if ctx.timeLeft<3000:
+    if ctx.timeLeft<20000:
         max_depth -=1
 
     for depth in range(1, max_depth + 1):
