@@ -75,7 +75,7 @@ def generate_data(fens, evals):
         all_x_dense.append(castling_rights_f + [turn_f] + material_f + material_count_f + [checkmate_f])
         all_evals.append(-evals[idx])
 
-        return all_boards, all_x_dense, all_evals
+    return all_boards, all_x_dense, all_evals
 
 def prep_data(all_boards, all_x_dense, all_evals):
     """Creates the training/test data sets and normalises them"""
@@ -113,7 +113,7 @@ def prep_data(all_boards, all_x_dense, all_evals):
 
 def main():
     # Load FENs and evaluations
-    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=450000)
+    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=10000)
     evals = [convert_eval_to_numeric(e) for e in evals]
 
     print(f"Processing {len(fens)} positions")
@@ -128,7 +128,7 @@ def main():
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding="same")(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same", kernel_regularizer=regularizers.l2(0.001))(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
     x = tf.keras.layers.Flatten()(x)
     x = tf.keras.layers.Dense(256, activation='relu')(x)
     x = tf.keras.layers.Dense(1, activation='linear')(x)
@@ -142,7 +142,7 @@ def main():
     z = tf.keras.layers.Dense(32, activation='relu')(z)
     output = tf.keras.layers.Dense(1, activation='linear')(z)
 
-    aimodel = Model(inputs=[cnn_input, extra_input], outputs=output)
+    aimodel = tf.keras.Model(inputs=[cnn_input, extra_input], outputs=output)
     aimodel.compile(optimizer=tf.keras.optimizers.Adam(0.0002),
                      loss=tf.keras.losses.MeanSquaredError(),
                      metrics=['mse'])
