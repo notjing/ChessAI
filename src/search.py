@@ -1,10 +1,12 @@
+import sys
 import chess
 import chess.engine
 import random
 import time
-from src import evaluate as model
+import evaluate as model
 
 search_deadline = None
+
 
 # -----------------------------
 # Zobrist Hash Setup
@@ -257,23 +259,23 @@ def search(board, depth, alpha, beta, zobrist_hash):
     return best_eval, best_move
 
 
-def find_move(ctx, board, max_depth):
+def find_move(board, max_depth):
     global pv_move, search_deadline
     search_deadline = time.time() + 2.0
-    if ctx.timeLeft<10000:
-        search_deadline = time.time() + 0.5
-    elif ctx.timeLeft<5000:
-        search_deadline = time.time() + 0.01
+    #if ctx.timeLeft<10000:
+    #    search_deadline = time.time() + 0.5
+    #elif ctx.timeLeft<5000:
+    #    search_deadline = time.time() + 0.01
     zob_hash = compute_zobrist(board)
     best_eval, best_move = None, None
 
     pv_move = None
 
     time_start = time.time()
-    if ctx.timeLeft<30000:
-        max_depth -=1
-    if ctx.timeLeft<20000:
-        max_depth -=1
+    #if ctx.timeLeft<30000:
+    #    max_depth -=1
+    #if ctx.timeLeft<20000:
+    #    max_depth -=1
 
     for depth in range(1, max_depth + 1):
         print(search_deadline - time.time())

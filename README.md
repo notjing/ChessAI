@@ -72,7 +72,7 @@ If you get an error like this:
 
 ```python
 Traceback (most recent call last):
-  File "/Users/obama/dev/chesshacks//src/main.py", line 1, in <module>
+  File "/Users/obama/dev/chesshacks//src/engine.py", line 1, in <module>
     from .utils import chess_manager, GameContext
 ImportError: attempted relative import with no known parent package
 ```
