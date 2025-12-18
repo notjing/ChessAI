@@ -53,6 +53,9 @@ def generate_data(fens, evals):
     all_boards, all_x_dense, all_evals = [], [], []
 
     for idx, fen in enumerate(fens):
+        if idx % 10000 == 0:
+            print(idx)
+
         board = chess.Board(fen)
 
         # Original board
@@ -113,7 +116,7 @@ def prep_data(all_boards, all_x_dense, all_evals):
 
 def main():
     # Load FENs and evaluations
-    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=10000)
+    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=500000)
     evals = [convert_eval_to_numeric(e) for e in evals]
 
     print(f"Processing {len(fens)} positions")
@@ -122,7 +125,7 @@ def main():
 
     x_train, y_train, x_test, y_test, x_train_dense, x_test_dense = prep_data(all_boards, all_x_dense, all_evals)
 
-    # Define CNN + extra input model
+    # Define CNN + dense model
     cnn_input = tf.keras.Input(shape=(8, 8, 17), name="board_input")
     x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same")(cnn_input)
     x = tf.keras.layers.BatchNormalization()(x)
