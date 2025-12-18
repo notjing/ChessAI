@@ -20,9 +20,13 @@ def makeboards(board):
 # -------------------------------
 # Load model
 # -------------------------------
+model_dir = "model_cache"
+
 model_path = hf_hub_download(
     repo_id="notjing/chessai",
-    filename="chessai_model.keras"
+    filename="chessai_model.keras",
+    local_dir=model_dir,
+    local_dir_use_symlinks=False
 )
 
 mod = tf.keras.models.load_model(model_path)
@@ -47,36 +51,37 @@ def board_parameters(board):
 # Evaluation function
 # -------------------------------
 def evaluate_board(board):
+    # 1. Extract all data
     turn, castling_rights, material, setup, material_count, checkmate = board_parameters(board)
     white_control, black_control = square_control(board)
     hanging = hanging_grids(board)
-    # Base 12 planes
-    planes = makeboards(board)  # (12, 8, 8)
 
-    # Extra planes
-    setup_plane = np.array(setup, dtype="float32")              # (8,8)
-    white_control = np.array(white_control, dtype="float32")    # (8,8)
-    black_control = np.array(black_control, dtype="float32")    # (8,8)
+    pieces = np.array(makeboards(board), dtype="float32")
+    setup_plane = np.expand_dims(np.array(setup, dtype="float32"), 0)
+    white_ctrl_plane = np.expand_dims(np.array(white_control, dtype="float32"), 0)
+    black_ctrl_plane = np.expand_dims(np.array(black_control, dtype="float32"), 0)
 
-    # Step 1: Build (15,8,8)
+    white_hanging = np.array(hanging[0], dtype="float32")
+    black_hanging = np.array(hanging[1], dtype="float32")
+
+    # 4. Concatenate all 17 layers
     planes = np.concatenate(
         [
-            planes,
-            setup_plane[None, ...],
-            white_control[None, ...],
-            black_control[None, ...]
+            pieces,  # 12 layers
+            setup_plane,  # 1 layer
+            white_ctrl_plane,  # 1 layer
+            black_ctrl_plane,  # 1 layer
+
         ],
         axis=0
     )
 
-    # Step 2: (8,8,15)
+    #(17, 8, 8) -> (8, 8, 17) -> (1, 8, 8, 17)
     planes = np.transpose(planes, (1, 2, 0))
-
-    # Step 3: (1,8,8,15)
     planes = np.expand_dims(planes, 0)
 
-    # Extra vector: (1,7)
-    vec = np.array([castling_rights + [turn] + material + material_count + [checkmate]], dtype="float32")
+    vec_data = castling_rights + [turn] + material + material_count + [int(checkmate)]
+    vec = np.array([vec_data], dtype="float32")
 
     preds = predict_fn([planes, vec])
 

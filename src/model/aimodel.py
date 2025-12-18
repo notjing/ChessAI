@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 import chess
 import pandas as pd
-from huggingface_hub import HfApi, Repository
+from huggingface_hub import HfApi
 from createparams import square_control, makeboards, board_parameters, hanging_grids
 
 
@@ -63,7 +63,7 @@ def generate_data(fens, evals):
         turn, castling_rights, material, ep_layer, material_count, checkmate = board_parameters(board)
         white_control, black_control = square_control(board)
         hanging = hanging_grids(board)
-        board_layers = np.array(makeboards(board) + [ep_layer, white_control, black_control] + hanging, dtype='float32')
+        board_layers = np.array(makeboards(board) + [ep_layer, white_control, black_control], dtype='float32')
         all_boards.append(board_layers)
         all_x_dense.append(castling_rights + [turn] + material + material_count + [checkmate])
         all_evals.append(evals[idx])
@@ -74,7 +74,7 @@ def generate_data(fens, evals):
         turn_f, castling_rights_f, material_f, ep_layer_f, material_count_f, checkmate_f = board_parameters(flipped_board)
         white_control_f, black_control_f = square_control(flipped_board)
         hanging_f = hanging_grids(flipped_board)
-        flipped_layers = np.array(makeboards(flipped_board) + [ep_layer_f, white_control_f, black_control_f] + hanging_f, dtype='float32')
+        flipped_layers = np.array(makeboards(flipped_board) + [ep_layer_f, white_control_f, black_control_f], dtype='float32')
         all_boards.append(flipped_layers)
         all_x_dense.append(castling_rights_f + [turn_f] + material_f + material_count_f + [checkmate_f])
         all_evals.append(-evals[idx])
@@ -117,7 +117,7 @@ def prep_data(all_boards, all_x_dense, all_evals):
 
 def main():
     # Load FENs and evaluations
-    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=500000)
+    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=10000)
     evals = [convert_eval_to_numeric(e) for e in evals]
 
     print(f"Processing {len(fens)} positions")
@@ -127,7 +127,7 @@ def main():
     x_train, y_train, x_test, y_test, x_train_dense, x_test_dense = prep_data(all_boards, all_x_dense, all_evals)
 
     # Define CNN + dense model
-    cnn_input = tf.keras.Input(shape=(8, 8, 17), name="board_input")
+    cnn_input = tf.keras.Input(shape=(8, 8, 15), name="board_input")
     x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same")(cnn_input)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding="same")(x)
@@ -164,15 +164,17 @@ def main():
     aimodel.save(model_file)
 
     # Upload to Hugging Face
-    hf_folder = "chessai_model_repo"
-    if os.path.exists(hf_folder):
-        print(f"{hf_folder} already exists, using it.")
+    print("Uploading to Hugging Face...")
+    api = HfApi()
 
-    repo = Repository(local_dir=hf_folder,
-                      clone_from="notjing/chessai",  # <-- replace with your HF repo
-                      use_auth_token=True)
-    shutil.copy(model_file, hf_folder)
-    repo.push_to_hub(commit_message="Upload trained chess AI aimodel")
+    # This will upload the file directly to your repo
+    api.upload_file(
+        path_or_fileobj=model_file,
+        path_in_repo="chessai_model.keras",
+        repo_id="notjing/chessai",  # <-- replace with your HF repo ID
+        repo_type="model",
+        commit_message="Upload trained chess AI model"
+    )
     print("Model uploaded successfully!")
 
 
