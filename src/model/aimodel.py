@@ -30,7 +30,7 @@ def parse_tfrecord(example):
 
     # Provides the structure of the TFRecord data
     feature_desc = {
-        "board": tf.io.FixedLenFeature([8 * 8 * 15], tf.float32),
+        "board": tf.io.FixedLenFeature([8 * 8 * 25], tf.float32),
         "extra": tf.io.FixedLenFeature([19], tf.float32),
         "eval": tf.io.FixedLenFeature([1], tf.float32),
     }
@@ -41,7 +41,7 @@ def parse_tfrecord(example):
     clamped_eval = tf.clip_by_value(ex["eval"][0], -1500.0, 1500.0)
     evalv = clamped_eval / 1500.0
 
-    board = tf.reshape(ex["board"], (8, 8, 15))
+    board = tf.reshape(ex["board"], (8, 8, 25))
     return {"board_input": board, "extra_input": ex["extra"]}, evalv
 def main():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,7 +58,7 @@ def main():
 
 
     # Define CNN + dense model
-    cnn_input = tf.keras.Input(shape=(8, 8, 15), name="board_input")
+    cnn_input = tf.keras.Input(shape=(8, 8, 25), name="board_input")
     x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same")(cnn_input)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding="same")(x)
@@ -87,7 +87,9 @@ def main():
         train_ds,
         validation_data=test_ds,
         epochs=25,
-        steps_per_epoch=1000,
+        steps_per_epoch=2148,
+        validation_steps= 20
+
     )
 
     print("Evaluating...")

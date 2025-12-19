@@ -33,8 +33,8 @@ def evaluate_board(board):
     extra_data = board_parameters(board)
     vec = np.array([extra_data], dtype="float32")
 
-    layers_12 = makeboards(board)
-    wc, bc = square_control(board)
+    layers_23 = makeboards(board)
+    s_control = square_control(board)
 
     # Creates enpassant grid
     ep_grid = np.zeros((8, 8), dtype=np.float32)
@@ -42,7 +42,7 @@ def evaluate_board(board):
         r, c = get_mapped_coords(board.ep_square, flip)
         ep_grid[r][c] = 1.0
 
-    planes = np.array(layers_12 + [wc, bc, ep_grid], dtype="float32")
+    planes = np.array(layers_23 + s_control +[ep_grid], dtype="float32")
 
     planes = np.transpose(planes, (1, 2, 0))
     planes = np.expand_dims(planes, 0)
@@ -53,4 +53,5 @@ def evaluate_board(board):
     centipawns = pred_norm * 1500
 
     return centipawns
+
 

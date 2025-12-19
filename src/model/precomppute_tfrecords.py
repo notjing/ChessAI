@@ -53,7 +53,7 @@ def process_fen(fen):
 
     # Gets the CNN parameters
     layers_12 = makeboards(board)
-    wc, bc = square_control(board)
+    s_control = square_control(board)
 
     # depending on whos turn it is gets the enpassant squares
     ep_grid = np.zeros((8, 8), dtype=np.float32)
@@ -63,9 +63,9 @@ def process_fen(fen):
         ep_grid[r][c] = 1.0
 
     # stacks all the board layers into a single nparray
-    layers = np.array(layers_12 + [wc, bc, ep_grid], dtype=np.float32)
+    layers = np.array(layers_12 + s_control + [ep_grid], dtype=np.float32)
 
-    # tranposes to (8,8,15)
+    # tranposes to (8,8,25)
     layers = np.transpose(layers, (1, 2, 0))
 
     return layers, np.array(extra, dtype=np.float32)
@@ -107,7 +107,8 @@ def build_tfrecord(csv_path, tfrecord_prefix, max_rows=None, shard_size=50_000):
                     f"tfrecords/{tfrecord_prefix}_{shard_idx:03d}.tfrecord"
                 )
 
-        except Exception:
+        except Exception as e:
+            print(e)
             continue
 
     writer.close()

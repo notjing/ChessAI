@@ -1,7 +1,6 @@
 import chess
 import numpy as np
 
-(4,2)
 def get_mapped_coords(square, flip):
     """
     given a square, return the square with the correct perspective
@@ -21,21 +20,31 @@ def get_mapped_coords(square, flip):
 
 def square_control(board):
     """
-    returns 8x8 bitboards, highlighting how many times a square is being attacked
+    returns 12 8x8 bitboards, highlighting the squares each type of piece is attacking
     """
     flip = (board.turn == chess.BLACK)
-    own_control = np.zeros((8, 8), dtype=np.float32)
-    opp_control = np.zeros((8, 8), dtype=np.float32)
+    pieces_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
 
-    own_color = board.turn
-    opp_color = not board.turn
+    layers = []
+    for colour in [board.turn, not board.turn]:
+        for pt in pieces_types:
+            grid = np.zeros((8, 8), dtype=np.float32)
+            bit_attacking = 0
+            for square in board.pieces(pt, colour):
+                attacking = board.attacks(square)
 
-    for square in chess.SQUARES:
-        r, c = get_mapped_coords(square, flip)
-        own_control[r][c] = len(board.attackers(own_color, square))
-        opp_control[r][c] = len(board.attackers(opp_color, square))
+                bit_board = int(attacking)
+                bit_attacking |= bit_board
 
-    return own_control, opp_control
+            while bit_attacking > 0:
+                lsb = bit_attacking & -bit_attacking
+                r, c = get_mapped_coords(lsb.bit_length() - 1, flip)
+                grid[r, c] = 1
+                bit_attacking -= lsb
+
+            layers.append(grid)
+
+    return layers
 
 
 def makeboards(board):
@@ -46,13 +55,14 @@ def makeboards(board):
     piece_types = [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]
 
     layers = []
-    for color in [board.turn, not board.turn]:
+    for colour in [board.turn, not board.turn]:
         for pt in piece_types:
             grid = np.zeros((8, 8), dtype=np.float32)
-            for square in board.pieces(pt, color):
+            for square in board.pieces(pt, colour):
                 r, c = get_mapped_coords(square, flip)
                 grid[r][c] = 1
             layers.append(grid)
+
     return layers
 
 def board_parameters(board):
@@ -70,9 +80,9 @@ def board_parameters(board):
 
     # Number of pieces
     counts = []
-    for color in [chess.WHITE, chess.BLACK]:
+    for colour in [chess.WHITE, chess.BLACK]:
         for pt in [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]:
-            counts.append(float(len(board.pieces(pt, color))))
+            counts.append(float(len(board.pieces(pt, colour))))
 
     # Material difference
     vals = {1: 1, 2: 3, 3: 3.4, 4: 5, 5: 9, 6: 0}
