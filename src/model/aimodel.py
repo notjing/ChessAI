@@ -1,130 +1,61 @@
-import sys
-import os
-import shutil
-import numpy as np
 import tensorflow as tf
-import chess
-import pandas as pd
 from huggingface_hub import HfApi
-from createparams import square_control, makeboards, board_parameters, hanging_grids
+import os
+
+def get_dataset(files, batch_size):
+    return (
+        files
+        # allows for several tfrecords to be read at a time
+        .interleave(tf.data.TFRecordDataset, num_parallel_calls=tf.data.AUTOTUNE)
+        # applies parse_tfrecord onto all files
+        .map(parse_tfrecord, num_parallel_calls=tf.data.AUTOTUNE)
+        .shuffle(200_000)
+        .batch(batch_size, drop_remainder=True)
+        .repeat()
+        # allows CPU to fetch more batches while GPU is calculating
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+def pawn_error(y_true, y_pred):
+    """
+    Converts the output into delta centipawns
+    """
+    return tf.reduce_mean(abs(y_true - y_pred)) * 1500
 
 
-def parse(file, nrows=None):
-    """parses csv file into two lists (fen, eval)"""
-    chess_data = pd.read_csv(file, nrows=nrows)
-    print("Parsing...")
-    first_column = chess_data.iloc[:, 0].tolist()
-    second_column = chess_data.iloc[:, 1].tolist()
-    print(f"Parsed: {len(first_column)} rows")
-    return first_column, second_column
+def parse_tfrecord(example):
+    """
+    Unwraps all the TFRecord files
+    """
 
-def convert_eval_to_numeric(eval_str):
-    """if the eval is mate, changes to 1500cp"""
-    try:
-        value = float(eval_str)
-        return np.clip(value, -1500, 1500)
-    except (ValueError, TypeError):
-        if eval_str[1] == '+':
-            return 1500
-        else:
-            return -1500
+    # Provides the structure of the TFRecord data
+    feature_desc = {
+        "board": tf.io.FixedLenFeature([8 * 8 * 15], tf.float32),
+        "extra": tf.io.FixedLenFeature([19], tf.float32),
+        "eval": tf.io.FixedLenFeature([1], tf.float32),
+    }
 
-def flip_fen_board(fen: str) -> str:
-    """Flips a FEN string vertically and switches colors."""
-    parts = fen.split()
-    board_part, turn, castling, ep, halfmove, fullmove = parts
+    ex = tf.io.parse_single_example(example, feature_desc)
 
-    ranks = board_part.split('/')
-    flipped_ranks = []
-    for rank in reversed(ranks):
-        new_rank = ''
-        for c in rank:
-            if c.isalpha():
-                new_rank += c.lower() if c.isupper() else c.upper()
-            else:
-                new_rank += c
-        flipped_ranks.append(new_rank)
+    # Adjusts eval
+    clamped_eval = tf.clip_by_value(ex["eval"][0], -1500.0, 1500.0)
+    evalv = clamped_eval / 1500.0
 
-    new_board = '/'.join(flipped_ranks)
-    new_turn = 'b' if turn == 'w' else 'w'
-    return f"{new_board} {new_turn} {castling} {ep} {halfmove} {fullmove}"
-
-def generate_data(fens, evals):
-    """Creates the data needed for training from the boards"""
-    all_boards, all_x_dense, all_evals = [], [], []
-
-    for idx, fen in enumerate(fens):
-        if idx % 10000 == 0:
-            print(idx)
-
-        board = chess.Board(fen)
-
-        # Original board
-        turn, castling_rights, material, ep_layer, material_count, checkmate = board_parameters(board)
-        white_control, black_control = square_control(board)
-        hanging = hanging_grids(board)
-        board_layers = np.array(makeboards(board) + [ep_layer, white_control, black_control], dtype='float32')
-        all_boards.append(board_layers)
-        all_x_dense.append(castling_rights + [turn] + material + material_count + [checkmate])
-        all_evals.append(evals[idx])
-
-        # Flipped board
-        flipped_fen = flip_fen_board(fen)
-        flipped_board = chess.Board(flipped_fen)
-        turn_f, castling_rights_f, material_f, ep_layer_f, material_count_f, checkmate_f = board_parameters(flipped_board)
-        white_control_f, black_control_f = square_control(flipped_board)
-        hanging_f = hanging_grids(flipped_board)
-        flipped_layers = np.array(makeboards(flipped_board) + [ep_layer_f, white_control_f, black_control_f], dtype='float32')
-        all_boards.append(flipped_layers)
-        all_x_dense.append(castling_rights_f + [turn_f] + material_f + material_count_f + [checkmate_f])
-        all_evals.append(-evals[idx])
-
-    return all_boards, all_x_dense, all_evals
-
-def prep_data(all_boards, all_x_dense, all_evals):
-    """Creates the training/test data sets and normalises them"""
-    # Convert to numpy arrays
-    boards = np.array(all_boards, dtype='float32')
-    x_dense = np.array(all_x_dense, dtype='float32')
-    evals = np.array(all_evals, dtype='float32')
-
-    # Shuffle data
-    indices = np.arange(len(boards))
-    np.random.shuffle(indices)
-    boards = boards[indices]
-    evals = evals[indices]
-
-    # Train/test split
-    split_index = int(len(boards) * 0.8)
-    x_train, y_train = boards[:split_index], evals[:split_index]
-    x_test, y_test = boards[split_index:], evals[split_index:]
-    x_train_dense = x_dense[:split_index]
-    x_test_dense = x_dense[split_index:]
-
-    # Normalize evaluations
-    y_mean = np.mean(y_train)
-    y_std = np.std(y_train) + 1e-6
-    print(f"mean: {y_mean}, std: {y_std}")
-    y_train = (y_train - y_mean) / y_std
-    y_test = (y_test - y_mean) / y_std
-
-    # Transpose to (batch, height, width, channels)
-    x_train = np.transpose(x_train, (0, 2, 3, 1))
-    x_test = np.transpose(x_test, (0, 2, 3, 1))
-    print(f"Training shape: {x_train.shape}")
-
-    return x_train, y_train, x_test, y_test, x_train_dense, x_test_dense
-
+    board = tf.reshape(ex["board"], (8, 8, 15))
+    return {"board_input": board, "extra_input": ex["extra"]}, evalv
 def main():
-    # Load FENs and evaluations
-    fens, evals = parse('chess_evaluations/random_evals.csv', nrows=10000)
-    evals = [convert_eval_to_numeric(e) for e in evals]
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    TFRECORD_DIR = os.path.join(BASE_DIR, "tfrecords")
 
-    print(f"Processing {len(fens)} positions")
+    all_files = tf.data.Dataset.list_files(os.path.join(TFRECORD_DIR, "*.tfrecord"), shuffle=True)
+    val_size = 10
 
-    all_boards, all_x_dense, all_evals = generate_data(fens, evals)
+    test_files = all_files.take(val_size)
+    train_files = all_files.skip(val_size)
 
-    x_train, y_train, x_test, y_test, x_train_dense, x_test_dense = prep_data(all_boards, all_x_dense, all_evals)
+    train_ds = get_dataset(train_files, 512)
+    test_ds = get_dataset(test_files, 512)
+
 
     # Define CNN + dense model
     cnn_input = tf.keras.Input(shape=(8, 8, 15), name="board_input")
@@ -135,7 +66,6 @@ def main():
     x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
     x = tf.keras.layers.Flatten()(x)
     x = tf.keras.layers.Dense(256, activation='relu')(x)
-    x = tf.keras.layers.Dense(1, activation='linear')(x)
 
     extra_input = tf.keras.Input(shape=(19,), name="extra_input")
     y = tf.keras.layers.Dense(32, activation='relu')(extra_input)
@@ -149,29 +79,30 @@ def main():
     aimodel = tf.keras.Model(inputs=[cnn_input, extra_input], outputs=output)
     aimodel.compile(optimizer=tf.keras.optimizers.Adam(0.0002),
                      loss=tf.keras.losses.MeanSquaredError(),
-                     metrics=['mse'])
+                     metrics=['mse', pawn_error])
 
     # Train the model
     print("Starting training...")
-    aimodel.fit([x_train, x_train_dense], y_train, validation_split=0.1, epochs=25, batch_size=64, shuffle=True)
+    aimodel.fit(
+        train_ds,
+        validation_data=test_ds,
+        epochs=25,
+        steps_per_epoch=1000,
+    )
 
-    # Evaluate the model
     print("Evaluating...")
-    aimodel.evaluate([x_test, x_test_dense], y_test, verbose=2)
+    aimodel.evaluate(test_ds, steps=100, verbose=2)
 
-    # Save model
     model_file = "chessai_model.keras"
     aimodel.save(model_file)
 
-    # Upload to Hugging Face
     print("Uploading to Hugging Face...")
     api = HfApi()
 
-    # This will upload the file directly to your repo
     api.upload_file(
         path_or_fileobj=model_file,
         path_in_repo="chessai_model.keras",
-        repo_id="notjing/chessai",  # <-- replace with your HF repo ID
+        repo_id="notjing/chessai",
         repo_type="model",
         commit_message="Upload trained chess AI model"
     )
