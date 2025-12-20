@@ -16,6 +16,16 @@ def get_dataset(files, batch_size):
         .prefetch(tf.data.AUTOTUNE)
     )
 
+def get_val_dataset(files, batch_size):
+    return (
+        files
+        .interleave(tf.data.TFRecordDataset, num_parallel_calls=tf.data.AUTOTUNE)
+        .map(parse_tfrecord, num_parallel_calls=tf.data.AUTOTUNE)
+        .batch(batch_size, drop_remainder=True)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+
 def pawn_error(y_true, y_pred):
     """
     Converts the output into delta centipawns
@@ -43,41 +53,55 @@ def parse_tfrecord(example):
 
     board = tf.reshape(ex["board"], (8, 8, 25))
     return {"board_input": board, "extra_input": ex["extra"]}, evalv
+
+def res_block(x, filters):
+    shortcut = x
+    x = tf.keras.layers.Conv2D(filters, (3, 3), padding="same", activation="relu")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Conv2D(filters, (3, 3), padding="same")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Add()([shortcut, x]) # The skip connection
+    return tf.keras.layers.Activation("relu")(x)
+
 def main():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     TFRECORD_DIR = os.path.join(BASE_DIR, "tfrecords")
 
     all_files = tf.data.Dataset.list_files(os.path.join(TFRECORD_DIR, "*.tfrecord"), shuffle=True)
-    val_size = 10
+    all_files = all_files.shuffle(buffer_size=100, seed=42)
 
-    test_files = all_files.take(val_size)
-    train_files = all_files.skip(val_size)
+    num_files = len(list(tf.io.gfile.glob(os.path.join(TFRECORD_DIR, "*.tfrecord"))))
+    num_test_files = max(1, int(0.1 * num_files))
+
+    test_files = all_files.take(num_test_files)
+    train_files = all_files.skip(num_test_files)
 
     train_ds = get_dataset(train_files, 512)
-    test_ds = get_dataset(test_files, 512)
+    test_ds = get_val_dataset(test_files, 512)
 
-
-    # Define CNN + dense model
+    # New CNN structure
     cnn_input = tf.keras.Input(shape=(8, 8, 25), name="board_input")
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same")(cnn_input)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding="same")(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding="same", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
+    x = tf.keras.layers.Conv2D(128, (3, 3), padding="same", activation="relu")(cnn_input)
+
+    for _ in range(6):
+        x = res_block(x, 128)
+
+    x = tf.keras.layers.Conv2D(32, (1, 1), activation="relu")(x)
     x = tf.keras.layers.Flatten()(x)
     x = tf.keras.layers.Dense(256, activation='relu')(x)
 
-    extra_input = tf.keras.Input(shape=(19,), name="extra_input")
-    y = tf.keras.layers.Dense(32, activation='relu')(extra_input)
-    y = tf.keras.layers.Dense(16, activation='relu')(y)
+    dense_input = tf.keras.Input(shape=(19,), name="extra_input")
+    y = tf.keras.layers.Dense(128, activation='relu')(dense_input)
+    y = tf.keras.layers.Dense(64, activation='relu')(y)
+    y = tf.keras.layers.Dense(32, activation='relu')(y)
 
     combined = tf.keras.layers.Concatenate()([x, y])
     z = tf.keras.layers.Dense(64, activation='relu')(combined)
     z = tf.keras.layers.Dense(32, activation='relu')(z)
     output = tf.keras.layers.Dense(1, activation='linear')(z)
 
-    aimodel = tf.keras.Model(inputs=[cnn_input, extra_input], outputs=output)
-    aimodel.compile(optimizer=tf.keras.optimizers.Adam(0.0002),
+    aimodel = tf.keras.Model(inputs=[cnn_input, dense_input], outputs=output)
+    aimodel.compile(optimizer=tf.keras.optimizers.Adam(0.00015),
                      loss=tf.keras.losses.MeanSquaredError(),
                      metrics=['mse', pawn_error])
 
@@ -86,9 +110,9 @@ def main():
     aimodel.fit(
         train_ds,
         validation_data=test_ds,
-        epochs=25,
-        steps_per_epoch=2148,
-        validation_steps= 20
+        epochs=40,
+        steps_per_epoch=5850,
+        validation_steps=50
 
     )
 

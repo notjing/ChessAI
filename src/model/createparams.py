@@ -80,9 +80,10 @@ def board_parameters(board):
 
     # Number of pieces
     counts = []
+
     for colour in [chess.WHITE, chess.BLACK]:
-        for pt in [chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING]:
-            counts.append(float(len(board.pieces(pt, colour))))
+        for pt in [[chess.PAWN, 8], [chess.KNIGHT, 2], [chess.BISHOP, 2], [chess.ROOK, 2], [chess.QUEEN, 1], [chess.KING, 1]]:
+            counts.append(float(len(board.pieces(pt[0], colour)))/pt[1])
 
     # Material difference
     vals = {1: 1, 2: 3, 3: 3.4, 4: 5, 5: 9, 6: 0}
