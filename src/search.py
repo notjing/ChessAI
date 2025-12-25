@@ -4,6 +4,7 @@ import chess.engine
 import random
 import time
 import evaluate as model
+from ChessAI.src.move_ordering import score_move
 
 search_deadline = None
 
@@ -13,12 +14,12 @@ search_deadline = None
 # -----------------------------
 ZOBRIST_PIECE = [[random.getrandbits(64) for _ in range(64)] for _ in range(12)]
 ZOBRIST_BLACK_TO_MOVE = random.getrandbits(64)
+
 # Optional: castling and en passant
 ZOBRIST_CASTLING = [random.getrandbits(64) for _ in range(16)]
 ZOBRIST_EN_PASSANT = [random.getrandbits(64) for _ in range(8)]
 
 def piece_index(piece):
-    """Map python-chess piece to 0..11"""
     base = {
         chess.PAWN: 0,
         chess.KNIGHT: 1,
@@ -99,51 +100,6 @@ def evaluate(board):
 # -----------------------------
 pv_move = None
 
-def score_move(board, move, parent_hash=None):
-    score = 0
-
-    # PV move first
-    if move == pv_move:
-        return 1000000
-
-    # Check bonus
-    board.push(move)
-    if board.is_check():
-        score += 1000
-
-    #prioritize castling
-    if board.is_castling(move):
-        score+=500
-    board.pop()
-
-    # Captures (MVV-LVA)
-    if board.is_capture(move):
-        captured = board.piece_at(move.to_square)
-        attacker_value = piece_value(board.piece_at(move.from_square))
-        victim_value = piece_value(captured)
-        score += 1000 + min(0,victim_value - attacker_value)
-
-    # Promotions
-    if move.promotion:
-        score += 900
-
-
-    # ----- TT ordering -----
-    if parent_hash is not None:
-        child_hash = compute_child_hash(board, move, parent_hash)
-        entry = TT.get(child_hash)
-
-        if entry:
-            # EXACT nodes are strongest predictions
-            if entry.flag == "EXACT":
-                score += 3000 + entry.eval
-            elif entry.flag == "LOWERBOUND":  # likely good
-                score += 2000
-            elif entry.flag == "UPPERBOUND":  # weaker info
-                score += 1000
-
-    return score
-
 
 def compute_child_hash(board, move, parent_hash):
     # simple, correct: push the move and recompute full zobrist from board
@@ -196,7 +152,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
     best_eval = -1e9 if maximizing else 1e9
 
     moves = list(board.legal_moves)
-    moves.sort(key=lambda m: score_move(board, m, zobrist_hash), reverse=True)
+    moves.sort(key=lambda m: score_move(board, m, pv_move, zobrist_hash), reverse=True)
 
     orig_alpha = alpha
     orig_beta = beta
@@ -204,7 +160,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
     for move_index, move in enumerate(moves):
         new_hash = compute_child_hash(board, move, zobrist_hash)
 
-        # Late Move Reductions (optional)
+        # Late Move Reductions
         reduction = 0
         if (
             depth >= 3
@@ -218,12 +174,18 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
         board.push(move)
         if reduction > 0:
-            val, mov = search(board, depth - 1 - reduction, alpha, beta, new_hash)
-            # Full-depth re-search if needed
-            if val is not None and ((maximizing and val > alpha) or (not maximizing and val < beta)):
+            # first search on a small alpha-beta window (can this move do better/worse than alpha/beta)
+            if maximizing:
+                val, mov = search(board, depth - 1 - reduction, alpha, alpha + 1, new_hash)
+            else:
+                val, mov = search(board, depth - 1 - reduction, beta - 1, beta, new_hash)
+
+            # not clear if move is bad or good --> research
+            if val is not None and alpha < val < beta:
                 val, mov = search(board, depth - 1, alpha, beta, new_hash)
         else:
             val, mov = search(board, depth - 1, alpha, beta, new_hash)
+
         board.pop()
 
         # Propagate cancellation
@@ -261,7 +223,7 @@ def search(board, depth, alpha, beta, zobrist_hash):
 
 def find_move(board, max_depth):
     global pv_move, search_deadline
-    search_deadline = time.time() + 2.0
+    search_deadline = time.time() + 10.0
     #if ctx.timeLeft<10000:
     #    search_deadline = time.time() + 0.5
     #elif ctx.timeLeft<5000:
@@ -307,3 +269,5 @@ def find_move(board, max_depth):
 
     return best_eval, best_move
 
+board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1")
+print(evaluate(board))
