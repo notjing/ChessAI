@@ -4,7 +4,7 @@ def score_move(board, move, prev_move, parent_hash=None):
     score = 0
 
     # PV move first
-    if move == prev_move:
+    if prev_move is not None and move == prev_move:
         return 1000000
 
     # Check bonus

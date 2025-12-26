@@ -138,8 +138,8 @@ def search(board, depth, alpha, beta, zobrist_hash):
     TT[zobrist_hash] = TTEntry(depth, best_eval, flag, best_move)
 
     # Update PV
-    if depth == 1:
-        pv_move = best_move
+    # if depth == 1:
+    #   pv_move = best_move
 
     return best_eval, best_move
 
