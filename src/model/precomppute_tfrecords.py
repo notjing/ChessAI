@@ -30,15 +30,20 @@ def serialize_example(board_input, extra_input, eval_value):
     example = tf.train.Example(features=tf.train.Features(feature=feature))
     return example.SerializeToString()
 
-def convert_eval(e):
+def convert_eval(e, flip):
     """
     Given an eval, forces the evaluation to be within 1500 cp
     If there is an error ("+-#x") just sets it to be +-1500 depending on who has mate
     """
+
+    ret = 0
+
     try:
-        return float(np.clip(float(e), -1500, 1500))
+        ret = float(np.clip(float(e), -1500, 1500))
     except:
-        return 1500 if "+" in str(e) else -1500
+        ret = 1500 if "+" in str(e) else -1500
+
+    return ret * (-1 if flip else 1)
 
 # -----------------------------
 # Core processing
@@ -93,7 +98,8 @@ def build_tfrecord(csv_path, tfrecord_prefix, max_rows=None, shard_size=50_000):
             print(cnt)
 
         try:
-            ev = convert_eval(ev)
+
+            ev = convert_eval(ev, (chess.Board(fen).turn == chess.BLACK))
 
             b, e = process_fen(fen)
             writer.write(serialize_example(b, e, ev))

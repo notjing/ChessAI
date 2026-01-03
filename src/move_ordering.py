@@ -22,7 +22,7 @@ def score_move(board, move, prev_move, parent_hash=None):
         captured = board.piece_at(move.to_square)
         attacker_value = piece_value(board.piece_at(move.from_square))
         victim_value = piece_value(captured)
-        score += 1000 + min(0, victim_value - attacker_value)
+        score += 1000 + victim_value - attacker_value
 
     # Promotions
     if move.promotion:

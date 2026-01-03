@@ -1,3 +1,4 @@
+import math
 import sys
 import numpy as np
 import chess
@@ -27,31 +28,43 @@ mod = tf.keras.models.load_model(
 def predict_fn(inputs):
     return mod(inputs, training=False)
 
-def evaluate_board(board):
-    flip = (board.turn == chess.BLACK)
+def evaluate_board(boards):
 
-    extra_data = board_parameters(board)
-    vec = np.array([extra_data], dtype="float32")
+    batch_planes = []
+    batch_vecs = []
 
-    layers_23 = makeboards(board)
-    s_control = square_control(board)
+    for board in boards:
+        flip = (board.turn == chess.BLACK)
 
-    # Creates enpassant grid
-    ep_grid = np.zeros((8, 8), dtype=np.float32)
-    if board.ep_square is not None:
-        r, c = get_mapped_coords(board.ep_square, flip)
-        ep_grid[r][c] = 1.0
+        dense_input = board_parameters(board)
+        batch_vecs.append(dense_input)
 
-    planes = np.array(layers_23 + s_control +[ep_grid], dtype="float32")
+        layers = makeboards(board)
+        s_control = square_control(board)
 
-    planes = np.transpose(planes, (1, 2, 0))
-    planes = np.expand_dims(planes, 0)
+        # Creates enpassant grid
+        ep_grid = np.zeros((8, 8), dtype=np.float32)
+        if board.ep_square is not None:
+            r, c = get_mapped_coords(board.ep_square, flip)
+            ep_grid[r][c] = 1.0
 
-    preds = predict_fn([planes, vec])
-    pred_norm = preds.numpy()[0][0]
+        planes = np.array(layers + s_control + [ep_grid], dtype="float32")
 
-    centipawns = pred_norm * 1500
+        planes = np.transpose(planes, (1, 2, 0))
+        # planes = np.expand_dims(planes, 0)
 
-    return centipawns
+        batch_planes.append(planes)
+
+    input_planes = np.array(batch_planes, dtype="float32")
+    input_vecs = np.array(batch_vecs, dtype="float32")
+
+    preds = predict_fn([input_planes, input_vecs])
+    raw_scores = preds.numpy().flatten()
+
+    win_probabilities = 2 / (1 + np.exp(-0.00368208 * raw_scores*1500)) - 1
+
+    return win_probabilities
+
+print(evaluate_board([chess.Board("r7/p5k1/1p1Q2p1/2pPp2p/2P1R3/5r2/PPB2qPP/4R2K w - - 2 33")]))
 
 

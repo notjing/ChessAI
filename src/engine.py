@@ -1,34 +1,60 @@
 import sys
-import chess
 import time
+import chess
 import traceback
 
-import search   # your existing search code
+# Import the MCTS search logic
+import search_MCTS as search
 
-
-# -------------------------
-# Utilities
-# -------------------------
 
 def log(msg):
-    """Debug logging → stderr (never stdout)"""
     print(msg, file=sys.stderr, flush=True)
 
 
-# -------------------------
-# Engine state
-# -------------------------
+def parse_time_limit(tokens, turn):
+    # 1. Fixed move time
+    if "movetime" in tokens:
+        idx = tokens.index("movetime") + 1
+        return float(tokens[idx]) / 1000.0
 
+    # 2. Dynamic time management
+    time_key = "wtime" if turn == chess.WHITE else "btime"
+    if time_key in tokens:
+        idx = tokens.index(time_key) + 1
+        time_left_ms = float(tokens[idx])
+        return 10
+        # Use 1/20th of remaining time, min 0.1s
+        #return max(0.1, (time_left_ms / 1000.0) / 20.0)
+
+    # 3. Default
+    return 10.0
+
+
+def warmup():
+    """
+    Forces TensorFlow to compile graphs.
+    """
+    log(">> WARMING UP ENGINE (Compiling TensorFlow)... Please wait...")
+    dummy_board = chess.Board()
+    try:
+        # Run a tiny search to trigger JIT compilation
+        search.search(dummy_board, time_limit=1.0)
+        log(">> WARMUP COMPLETE. Engine is ready.")
+    except Exception as e:
+        log(f">> Warmup failed: {e}")
+
+
+# -------------------------
+# UCI Main Loop
+# -------------------------
 board = chess.Board()
-search_depth = 3
 
-
-# -------------------------
-# UCI main loop
-# -------------------------
 
 def main():
-    global board, search_depth
+    global board
+
+    # Track if we have warmed up yet
+    is_warmed_up = False
 
     while True:
         try:
@@ -37,50 +63,52 @@ def main():
                 continue
 
             line = line.strip()
+            tokens = line.split()
+            if not tokens: continue
 
-            # --- UCI handshake ---
-            if line == "uci":
-                print("id name MarsIsRed", flush=True)
-                print("id author RedIsMars", flush=True)
+            cmd = tokens[0]
+
+            if cmd == "uci":
+                print("id name MarsIsRed MCTS")
+                print("id author RedIsMars")
                 print("uciok", flush=True)
 
-
-            elif line == "isready":
+            elif cmd == "isready":
+                # DO THE WARMUP HERE
+                # The GUI/Bot is waiting for "readyok", so it's safe to block now.
+                if not is_warmed_up:
+                    warmup()
+                    is_warmed_up = True
                 print("readyok", flush=True)
 
-            # --- Set position ---
-            elif line.startswith("position"):
-                tokens = line.split()
-
+            elif cmd == "position":
                 if "startpos" in tokens:
                     board = chess.Board()
-                    moves_start = tokens.index("moves") + 1 if "moves" in tokens else None
-                else:
-                    fen_start = tokens.index("fen") + 1
-                    fen = " ".join(tokens[fen_start:fen_start + 6])
-                    board = chess.Board(fen)
-                    moves_start = fen_start + 6 if "moves" in tokens else None
+                    if "moves" in tokens:
+                        moves_idx = tokens.index("moves") + 1
+                        for move in tokens[moves_idx:]:
+                            board.push_uci(move)
+                elif "fen" in tokens:
+                    fen_idx = tokens.index("fen") + 1
+                    fen_parts = tokens[fen_idx:fen_idx + 6]
+                    board = chess.Board(" ".join(fen_parts))
+                    if "moves" in tokens:
+                        moves_idx = tokens.index("moves") + 1
+                        for move in tokens[moves_idx:]:
+                            board.push_uci(move)
 
-                if moves_start:
-                    for move in tokens[moves_start:]:
-                        board.push_uci(move)
+            elif cmd == "go":
+                limit = parse_time_limit(tokens, board.turn)
+                log(f"Searching with time limit: {limit:.2f}s")
 
-            # --- Go / search ---
-            elif line.startswith("go"):
-                start = time.time()
+                move = search.search(board, limit)
 
-                # Your existing search function
-                eval_score, move = search.find_move(board, search_depth)
-
-                if move is None or move not in board.legal_moves:
-                    print("bestmove 0000", flush=True)
+                if move is None:
+                    print("bestmove (none)", flush=True)
                 else:
                     print(f"bestmove {move.uci()}", flush=True)
 
-                log(f"Move computed in {time.time() - start:.3f}s")
-
-            # --- Quit ---
-            elif line == "quit":
+            elif cmd == "quit":
                 break
 
         except Exception:

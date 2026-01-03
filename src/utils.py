@@ -12,7 +12,7 @@ ZOBRIST_CASTLING = [random.getrandbits(64) for _ in range(16)]
 ZOBRIST_EN_PASSANT = [random.getrandbits(64) for _ in range(8)]
 def piece_index(piece):
     base = {
-            chess.PAWN: 0,
+        chess.PAWN: 0,
         chess.KNIGHT: 1,
         chess.BISHOP: 2,
         chess.ROOK: 3,
