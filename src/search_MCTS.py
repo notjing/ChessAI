@@ -139,8 +139,10 @@ def search(root_board, time_limit):
     if not root_node.children:
         return None
 
-    best_move = max(root_node.children, key=lambda m: root_node.children[m].visit_count)
-
+    best_move= max(
+        root_node.children.values(),
+        key=lambda n: n.value() + 0.1 * math.sqrt(n.visit_count)
+    )
     # Debug: print top moves
     sorted_moves = sorted(root_node.children.items(),
                           key=lambda x: x[1].visit_count,

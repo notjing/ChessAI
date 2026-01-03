@@ -28,31 +28,42 @@ mod = tf.keras.models.load_model(
 def predict_fn(inputs):
     return mod(inputs, training=False)
 
+board_cache = {}
+
+cache_hits = 0
+cache_misses = 0
+
+
 def evaluate_board(boards):
+    global cache_hits, cache_misses
 
     batch_planes = []
     batch_vecs = []
 
     for board in boards:
-        flip = (board.turn == chess.BLACK)
+        fen = board.fen()
 
-        dense_input = board_parameters(board)
-        batch_vecs.append(dense_input)
+        if fen in board_cache:
+            planes, dense = board_cache[fen]
+            cache_hits += 1
+        else:
+            cache_misses += 1
+            flip = (board.turn == chess.BLACK)
+            dense = board_parameters(board)
+            layers = makeboards(board)
+            s_control = square_control(board)
 
-        layers = makeboards(board)
-        s_control = square_control(board)
+            ep_grid = np.zeros((8, 8), dtype=np.float32)
+            if board.ep_square is not None:
+                r, c = get_mapped_coords(board.ep_square, flip)
+                ep_grid[r][c] = 1.0
 
-        # Creates enpassant grid
-        ep_grid = np.zeros((8, 8), dtype=np.float32)
-        if board.ep_square is not None:
-            r, c = get_mapped_coords(board.ep_square, flip)
-            ep_grid[r][c] = 1.0
+            planes = np.array(layers + s_control + [ep_grid], dtype="float32")
+            planes = np.transpose(planes, (1, 2, 0))
 
-        planes = np.array(layers + s_control + [ep_grid], dtype="float32")
+            board_cache[fen] = (planes, dense)
 
-        planes = np.transpose(planes, (1, 2, 0))
-        # planes = np.expand_dims(planes, 0)
-
+        batch_vecs.append(dense)
         batch_planes.append(planes)
 
     input_planes = np.array(batch_planes, dtype="float32")
@@ -61,10 +72,12 @@ def evaluate_board(boards):
     preds = predict_fn([input_planes, input_vecs])
     raw_scores = preds.numpy().flatten()
 
-    win_probabilities = 2 / (1 + np.exp(-0.00368208 * raw_scores*1500)) - 1
+    win_probabilities = 2 / (1 + np.exp(-0.00368208 * raw_scores * 1500)) - 1
+
+    if (cache_hits + cache_misses) % 1000 == 0:
+        hit_rate = cache_hits / (cache_hits + cache_misses) * 100
+        print(f"Cache: {cache_hits} hits, {cache_misses} misses ({hit_rate:.1f}% hit rate)")
 
     return win_probabilities
-
-print(evaluate_board([chess.Board("r7/p5k1/1p1Q2p1/2pPp2p/2P1R3/5r2/PPB2qPP/4R2K w - - 2 33")]))
 
 
